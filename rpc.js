@@ -1,8 +1,8 @@
 
 
-var Bitcoin = require('bitcoin');
-var Q = require('q');
-var ES5Class = require('es5class');
+const Bitcoin = require('bitcoin');
+const Q = require('q');
+const ES5Class = require('es5class');
 
 exports.Class = ES5Class.$define('BitcoinRpc', function () {
   var p = {
