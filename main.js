@@ -28,26 +28,29 @@ const bitcoinRpc = new BitcoinRpc({
 });
 
 bitcoinRpc.listUnspent().then(function (unspents) {
-  // console.log('Unspents', unspents);
-  return Q.all(createRawTransactions(unspents).map(function (transaction) {
-    console.log('Found ' + transaction.length + ' unspent transactions');
-    console.log('Transaction', transaction);
-    // return bitcoinRpc.createRawTransaction.apply(bitcoinRpc, transaction).then(function (hexTransaction) {
-    //   console.log('Signing transaction');
-    //   return bitcoinRpc.signRawTransaction(hexTransaction).then(function (signedResponse) {
-    //     if (signedResponse.complete) {
-    //       console.log('Sending transaction');
-    //       console.log(signedResponse.hex);
-    //       // return bitcoinRpc.sendRawTransaction(signedResponse.hex).then(function (transactionId) {
-    //       //   console.log('Transaction sent');
-    //       //   console.log(transactionId);
-    //       // }).fail(function (response) {
-    //       //   console.error(response);
-    //       // });
-    //     }
-    //   });
-    // })
-  }));
+    if (unspents.length !== 0) {
+      return Q.all(createRawTransactions(unspents).map(function (transaction) {
+          console.log('Found ' + transaction.length + ' unspent transactions');
+          console.log('Transaction', transaction);
+          return bitcoinRpc.createRawTransaction.apply(bitcoinRpc, transaction).then(function (hexTransaction) {
+              console.log('Signing transaction');
+              return bitcoinRpc.signRawTransaction(hexTransaction).then(function (signedResponse) {
+                  if (signedResponse.complete) {
+                      console.log('Sending transaction');
+                      console.log(signedResponse.hex);
+                      return bitcoinRpc.sendRawTransaction(signedResponse.hex).then(function (transactionId) {
+                          console.log('Transaction sent');
+                          console.log(transactionId);
+                      }).fail(function (response) {
+                          console.error(response);
+                      });
+                  }
+              });
+          });
+      }));
+    } else {
+        console.log('No unspent addresses');
+    }
 }).fail(function (response) {
   console.error(response);
 });
@@ -75,6 +78,9 @@ function createRawTransactions (unspent) {
   const numberOfTransactions = Math.ceil(rawTransactionStr.length / 245000);
   const numberOfTransactionsPerBlock = Math.ceil(transactions.length / numberOfTransactions);
   const rawTransactions = [];
+
+  const amountToSendToColdWallet = getColdWalletLimit(total, argv.cold_wallet_percentage);
+  let amountSentTolColdWallet = 0;
   for (let i = 0; i < numberOfTransactions; i++) {
       transactions = [];
       total = 0;
@@ -89,10 +95,20 @@ function createRawTransactions (unspent) {
         }
       }
       const output = {};
-      output[argv.cold_wallet_address] = parseFloat(parseFloat(total - argv.fee).toPrecision(8));
+      const address = (amountSentTolColdWallet < amountToSendToColdWallet) ? argv.cold_wallet_address : argv.hot_wallet_address;
+      console.log("Sending %s to %s with fee %s", total, address, argv.fee);
+      output[address] = parseFloat(parseFloat(total - argv.fee).toPrecision(8));
       rawTransactions.push([ transactions, output ]);
   }
 
   return rawTransactions;
 
+}
+
+/**
+ * This will take the amount discovered in un-spent outputs, and determine how much of it needs
+ * to be placed in cold storage.
+ */
+function getColdWalletLimit (totalAmount, cold_wallet_percentage) {
+    return (totalAmount * (cold_wallet_percentage / 100));
 }
